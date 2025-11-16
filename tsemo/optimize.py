@@ -11,10 +11,10 @@ from botorch.acquisition.multi_objective.monte_carlo import (
 from botorch.acquisition.multi_objective.monte_carlo import (
     qNoisyExpectedHypervolumeImprovement as qNEHVI,
 )
-from botorch.fit import fit_gpytorch_model
+#from botorch.fit import fit_gpytorch_model
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
-from botorch.models import HeteroskedasticSingleTaskGP
+from botorch.models import SingleTaskGP
 from botorch.models.model import Model
 from botorch.models.model_list_gp_regression import ModelListGP
 from botorch.models.transforms.input import FilterFeatures
@@ -291,7 +291,7 @@ class MOBO(Strategy):
                 Y_pos = abs(Y)
                 train_Yvar = ((Y_pos ** noise_slope * 10 ** noise_level) / np.std(Y_pos)) ** 2
                 train_Yvar = torch.tensor(train_Yvar.values.reshape(-1, 1).astype(np.float64))
-                model = HeteroskedasticSingleTaskGP(X, y[:, [i]], train_Yvar)
+                model = SingleTaskGP(X, y[:, [i]], train_Yvar)
 
                 models.append(model)
             model = ModelListGP(*models)

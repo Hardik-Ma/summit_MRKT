@@ -53,6 +53,8 @@ data = DataSet.from_df(data_df)
 strategy = TSEMO(domain)
 result = strategy.suggest_experiments(1, prev_res=data)
 print(result)
+# Save to CSV
+result.to_csv('tsemo_suggestion.csv')
 
 # entry = 'TrainingSet_MOBO_4var_sty'
 # initial_exp = 38

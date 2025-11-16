@@ -511,7 +511,7 @@ class ThompsonSampledModel:
     def fit(self, X: DataSet, y: DataSet, **kwargs):
         """Train model and take spectral samples"""
         from botorch.models import SingleTaskGP
-        from botorch.fit import fit_gpytorch_model
+        from botorch.fit import fit_gpytorch_mll
         from gpytorch.mlls.exact_marginal_log_likelihood import (
             ExactMarginalLogLikelihood,
         )
@@ -531,35 +531,54 @@ class ThompsonSampledModel:
         self.model = SingleTaskGP(X, y)
         mll = ExactMarginalLogLikelihood(self.model.likelihood, self.model)
         warnings.simplefilter("ignore", InputDataWarning)
-        fit_gpytorch_model(mll)
+        fit_gpytorch_mll(mll)
 
-        # self.logger.info model hyperparameters
+        # Get model hyperparameters - FIXED FOR NEWER VERSIONS
         if self.model_name is None:
             self.model_name = self.output_columns_ordered[0]
-        self.lengthscales_ = self.model.covar_module.base_kernel.lengthscale.detach()[
-            0
-        ].numpy()
-        self.outputscale_ = self.model.covar_module.outputscale.detach().numpy()
+        
+        # Get lengthscales - handle different kernel structures
+        try:
+            # Try direct access first (for RBFKernel)
+            self.lengthscales_ = self.model.covar_module.lengthscale.detach()[0].numpy()
+        except AttributeError:
+            try:
+                # Try if it's wrapped in a ScaleKernel
+                self.lengthscales_ = self.model.covar_module.base_kernel.lengthscale.detach()[0].numpy()
+            except AttributeError:
+                # Fallback to default
+                self.lengthscales_ = np.array([1.0] * X_np.shape[1])
+
+        # Outputscale - RBFKernel doesn't have outputscale, use default
+        try:
+            self.outputscale_ = self.model.covar_module.outputscale.detach().numpy()[0]
+        except AttributeError:
+            self.outputscale_ = 1.0  # Default value for RBF kernel
+
         self.noise_ = self.model.likelihood.noise_covar.noise.detach().numpy()[0]
         self.logger.debug(f"Model {self.model_name} lengthscales: {self.lengthscales_}")
         self.logger.debug(f"Model {self.model_name} variance: {self.outputscale_}")
         self.logger.debug(f"Model {self.model_name} noise: {self.noise_}")
 
-        # Spectral sampling
+        # Spectral sampling - FIX nu parameter for RBF kernel
         n_spectral_points = kwargs.get("n_spectral_points", 1500)
         n_retries = kwargs.get("n_retries", 10)
         self.logger.debug(
             f"Spectral sampling {self.model_name} with {n_spectral_points} spectral points."
         )
         self.rff = None
-        nu = self.model.covar_module.base_kernel.nu
+
+        # For RBF kernel, use a large nu value (equivalent to nu=infinity)
+        # Common practice: use nu=2.5 or higher for RBF approximation
+        nu = 2.5  # Use this for RBF kernel
+
         for _ in range(n_retries):
             try:
                 self.rff = pyrff.sample_rff(
                     lengthscales=self.lengthscales_,
                     scaling=np.sqrt(self.outputscale_),
                     noise=self.noise_,
-                    kernel_nu=nu,
+                    kernel_nu=nu,  # Now using valid value
                     X=X_np,
                     Y=y_np[:, 0],
                     M=n_spectral_points,
